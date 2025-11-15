@@ -1,3 +1,6 @@
+DROP TABLE IF EXISTS utilisateur_roles, role_permissions, sessions, logs_connexion, utilisateurs, roles, permissions CASCADE;
+
+
 CREATE TABLE utilisateurs (
     id SERIAL PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
