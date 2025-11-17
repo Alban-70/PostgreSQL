@@ -5,11 +5,9 @@ const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid');
 const { requireAuth } = require('../middleware/auth');
 
-// POST /api/auth/register - Inscription
 router.post('/register', async (req, res) => {
     const { email, password, nom, prenom } = req.body;
 
-    // 1. Validation
     if (!email || !password) {
         return res.status(400).json({ error: 'Email et mot de passe requis' });
     }
@@ -19,7 +17,6 @@ router.post('/register', async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // 2. Vérifier si email existe
         const checkUser = await client.query(
             'SELECT id FROM utilisateurs WHERE email = $1',
             [email]
@@ -30,10 +27,8 @@ router.post('/register', async (req, res) => {
             return res.status(409).json({ error: 'Email déjà utilisé' });
         }
 
-        // 3. Hasher le mot de passe
         const passwordHash = await bcrypt.hash(password, 10);
 
-        // 4. Insérer l'utilisateur
         const result = await client.query(
             `INSERT INTO utilisateurs (email, password_hash, nom, prenom)
              VALUES ($1, $2, $3, $4)
@@ -43,7 +38,6 @@ router.post('/register', async (req, res) => {
 
         const newUser = result.rows[0];
 
-        // 5. Assigner le rôle "user"
         await client.query(
             `INSERT INTO utilisateur_roles (utilisateur_id, role_id)
              SELECT $1, id FROM roles WHERE nom = 'user'`,
@@ -66,7 +60,6 @@ router.post('/register', async (req, res) => {
     }
 });
 
-// POST /api/auth/login - Connexion
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
 
@@ -78,7 +71,6 @@ router.post('/login', async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // 1. Récupérer l'utilisateur
         const userResult = await client.query(
             `SELECT id, email, password_hash, nom, prenom, actif
              FROM utilisateurs WHERE email = $1`,
@@ -86,7 +78,6 @@ router.post('/login', async (req, res) => {
         );
 
         if (userResult.rows.length === 0) {
-            // Logger l'échec
             await client.query(
                 `INSERT INTO logs_connexion (utilisateur_id, email_tentative, succes, message)
                  VALUES (NULL, $1, false, 'Email inexistant')`,
@@ -98,7 +89,6 @@ router.post('/login', async (req, res) => {
 
         const user = userResult.rows[0];
 
-        // 2. Vérifier si actif
         if (!user.actif) {
             await client.query(
                 `INSERT INTO logs_connexion (utilisateur_id, email_tentative, succes, message)
@@ -109,7 +99,6 @@ router.post('/login', async (req, res) => {
             return res.status(403).json({ error: 'Compte désactivé' });
         }
 
-        // 3. Vérifier le mot de passe
         const passwordMatch = await bcrypt.compare(password, user.password_hash);
 
         if (!passwordMatch) {
@@ -122,19 +111,16 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
         }
 
-        // 4. Générer token
         const token = uuidv4();
         const expiresAt = new Date();
         expiresAt.setHours(expiresAt.getHours() + 24);
 
-        // 5. Créer session
         await client.query(
             `INSERT INTO sessions (utilisateur_id, token, date_expiration)
              VALUES ($1, $2, $3)`,
             [user.id, token, expiresAt]
         );
 
-        // 6. Logger succès
         await client.query(
             `INSERT INTO logs_connexion (utilisateur_id, email_tentative, succes, message)
              VALUES ($1, $2, true, 'Connexion réussie')`,
@@ -164,18 +150,15 @@ router.post('/login', async (req, res) => {
     }
 });
 
-// POST /api/auth/logout - Déconnexion
 router.post('/logout', requireAuth, async (req, res) => {
     const token = req.headers['authorization'];
 
     try {
-        // 1. Désactiver la session
         await pool.query(
             'UPDATE sessions SET actif = false WHERE token = $1',
             [token]
         );
 
-        // 2. Logger la déconnexion
         await pool.query(
             `INSERT INTO logs_connexion (utilisateur_id, email_tentative, succes, message)
              VALUES ($1, $2, true, 'Déconnexion')`,
@@ -190,10 +173,8 @@ router.post('/logout', requireAuth, async (req, res) => {
     }
 });
 
-// GET /api/auth/profile - Profil utilisateur
 router.get('/profile', requireAuth, async (req, res) => {
     try {
-        // Récupérer l'utilisateur avec ses rôles
         const result = await pool.query(
             `SELECT 
                 u.id,
@@ -219,7 +200,6 @@ router.get('/profile', requireAuth, async (req, res) => {
     }
 });
 
-// GET /api/auth/logs - Historique des connexions
 router.get('/logs', requireAuth, async (req, res) => {
     try {
         const result = await pool.query(
